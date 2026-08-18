@@ -1,5 +1,8 @@
-from pathlib import Path
+from __future__ import annotations
+
 import json
+from pathlib import Path
+from typing import Any
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -7,10 +10,12 @@ from fastapi.middleware.cors import CORSMiddleware
 from agent import solve_scenario
 
 
-app = FastAPI()
+app = FastAPI(
+    title="Emergency Control API",
+    version="1.0.0",
+)
 
 
-# Permite que el frontend se comunique con el backend.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -20,40 +25,47 @@ app.add_middleware(
 )
 
 
-# Ruta al archivo del escenario.
-BASE_DIR = Path(__file__).resolve().parent
-SCENARIO_PATH = BASE_DIR.parent.parent / "scenarios" / "scenario.json"
+SCENARIO_PATH = (
+    Path(__file__).resolve().parents[2]
+    / "scenarios"
+    / "scenario.json"
+)
 
 
-def cargar_escenario():
+def cargar_escenario() -> dict[str, Any]:
     """
-    Carga el escenario desde scenario.json.
-
-    El agente no tiene valores del escenario escritos directamente
-    en el código. Toda la información se toma del archivo JSON.
+    Carga el escenario por defecto desde scenario.json.
     """
-    with open(
-        SCENARIO_PATH,
-        "r",
-        encoding="utf-8",
+
+    with SCENARIO_PATH.open(
+        encoding="utf-8"
     ) as archivo:
         return json.load(archivo)
 
 
 @app.get("/api/health")
-def health():
-    """
-    Endpoint sencillo para comprobar que el backend está funcionando.
-    """
+def health() -> dict[str, str]:
     return {
         "status": "ok"
     }
 
 
+@app.get("/api/scenario")
+def get_scenario() -> dict[str, Any]:
+    return cargar_escenario()
+
+
 @app.post("/api/solve")
-def solve(scenario: dict[str, Any]) -> dict[str, Any]:
-    data = scenario if scenario else _load_default_scenario()
+def solve(
+    scenario: dict[str, Any],
+) -> dict[str, Any]:
 
-    resultado = solve_scenario(data)
+    data = (
+        scenario
+        if scenario
+        else cargar_escenario()
+    )
 
-    return resultado
+    return solve_scenario(
+        data
+    )
