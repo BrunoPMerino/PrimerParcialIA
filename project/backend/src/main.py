@@ -1,18 +1,16 @@
-"""FastAPI backend — demo solver for frontend integration testing."""
-
-from __future__ import annotations
-
-import json
 from pathlib import Path
-from typing import Any
+import json
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from demo_plan import build_demo_plan
+from agent import solve_scenario
 
-app = FastAPI(title="Emergency Control API", version="1.0.0")
 
+app = FastAPI()
+
+
+# Permite que el frontend se comunique con el backend.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -21,30 +19,41 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-SCENARIO_PATH = Path(__file__).resolve().parents[2] / "scenarios" / "scenario.json"
+
+# Ruta al archivo del escenario.
+BASE_DIR = Path(__file__).resolve().parent
+SCENARIO_PATH = BASE_DIR.parent.parent / "scenarios" / "scenario.json"
 
 
-def _load_default_scenario() -> dict[str, Any]:
-    with SCENARIO_PATH.open(encoding="utf-8") as f:
-        return json.load(f)
+def cargar_escenario():
+    """
+    Carga el escenario desde scenario.json.
+
+    El agente no tiene valores del escenario escritos directamente
+    en el código. Toda la información se toma del archivo JSON.
+    """
+    with open(
+        SCENARIO_PATH,
+        "r",
+        encoding="utf-8",
+    ) as archivo:
+        return json.load(archivo)
 
 
 @app.get("/api/health")
-def health() -> dict[str, str]:
-    return {"status": "ok"}
-
-
-@app.get("/api/scenario")
-def get_scenario() -> dict[str, Any]:
-    return _load_default_scenario()
+def health():
+    """
+    Endpoint sencillo para comprobar que el backend está funcionando.
+    """
+    return {
+        "status": "ok"
+    }
 
 
 @app.post("/api/solve")
 def solve(scenario: dict[str, Any]) -> dict[str, Any]:
-    """Return a demo plan consistent with the provided scenario.
-
-    Students replace this with a real UCS/search agent. The response contract
-    must remain: solution_found, total_cost, steps[{op, cost, ...}].
-    """
     data = scenario if scenario else _load_default_scenario()
-    return build_demo_plan(data)
+
+    resultado = solve_scenario(data)
+
+    return resultado
