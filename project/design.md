@@ -17,187 +17,281 @@ búsqueda clásica. Justifique cada componente con ese marco (AIMA, cap. 3).
 
 ### Definición formal
 
-Escriba la tupla de estado. Cada componente debe ser una variable que el robot
-necesita para saber qué podrá hacer después.
+El estado se puede representar con la siguiente tupla:
 
 ```text
-s = ⟨ … ⟩
+s = ⟨z, b, C, L, D, P, E⟩
 ```
 
-(completar)
+Donde:
+
+- `z`: zona actual del robot
+- `b`: batería disponible
+- `C`: carga actual del robot
+- `L`: ubicación de los objetos relevantes que están en el suelo
+- `D`: conjunto de puertas que ya fueron abiertas
+- `P`: conjunto de paneles que ya fueron reparados
+- `E`: conjunto de estaciones que se encuentran ONLINE
 
 ### Por qué cada variable es necesaria
 
-Criterio de clase (`Applicable`): una variable pertenece al estado **si y solo si**
-dos configuraciones que difieran en ella pueden diferir en las acciones legales
-futuras o en su resultado.
+La zona `z` es necesaria porque dependiendo de dónde esté el robot cambian los movimientos y las acciones que puede realizar.
 
-Pase ese filtro con cada variable. En particular:
+La batería `b` también debe estar en el estado porque todas las acciones gastan batería. Dos robots en el mismo lugar y con los mismos objetos, pero con diferente batería, pueden tener diferentes acciones disponibles.
 
-- la **batería** forma parte de la situación física (§2.1 del enunciado);
-- la **posición de los objetos** no se deduce del escenario inicial si el robot
-  puede soltarlos (`DROP`);
-- los cambios permanentes (puertas, paneles, estaciones) condicionan el futuro.
+La carga `C` es necesaria porque algunas acciones requieren tener ciertos objetos. También se debe tener en cuenta la capacidad máxima que puede transportar el robot.
 
-(completar)
+La ubicación de los objetos `L` debe estar en el estado porque los objetos pueden ser recogidos y también soltados. Por esto, después de comenzar el problema no podemos saber su ubicación mirando solamente el escenario inicial.
+
+Las puertas abiertas `D` son importantes porque cuando una puerta se abre queda abierta permanentemente y esto cambia los caminos que puede usar el robot.
+
+Los paneles reparados `P` se necesitan porque un panel reparado cambia el entorno y puede permitir que después se active una estación.
+
+Las estaciones ONLINE `E` forman parte del estado porque algunas estaciones dependen de otras y también porque la meta del problema se comprueba usando las estaciones que están activas.
+
+En general, estas variables forman parte del estado porque si alguna cambia, también pueden cambiar las acciones que el robot puede realizar después.
 
 ### Qué información se deriva y NO se almacena
 
-Peso de la carga, grafo de corredores, costos, capacidad, batería máxima, etc.
-Si se puede calcular a partir del estado y de las constantes del escenario, no
-es una variable de estado.
+No es necesario guardar información que se pueda calcular usando el estado y los datos del escenario.
 
-(completar)
+Por ejemplo, el peso actual de la carga se puede calcular sumando el peso de los objetos que están en `C`, por lo que no hace falta guardarlo como otra variable.
+
+Tampoco se guardan como parte del estado:
+
+- el grafo de corredores;
+- los costos de las acciones;
+- la capacidad máxima de carga;
+- la batería máxima;
+- la ubicación inicial de los paneles;
+- los requisitos de reparación;
+- las dependencias de las estaciones.
+
+Toda esta información es fija y viene definida por el escenario.
+
+Las acciones posibles tampoco se guardan porque se pueden calcular en cada momento usando `Applicable(s)`.
 
 ### Qué pertenece al historial de búsqueda y no al estado físico
 
-`g(n)`, el padre y la acción que trajo aquí describen *cómo llegó*, no *dónde
-está*. Viven en el **Nodo**. Si se meten en el estado, CLOSED no puede reconocer
-la misma situación física alcanzada por dos rutas.
+El costo acumulado `g(n)`, el nodo padre, la acción que llevó hasta el nodo y la profundidad no forman parte del estado físico.
 
-(completar)
+Esta información pertenece al nodo de búsqueda porque explica cómo se llegó hasta una situación.
+
+Dos caminos diferentes pueden terminar exactamente en el mismo estado del mundo. Si guardáramos el camino dentro del estado, Graph Search pensaría que son situaciones diferentes y no podría detectar correctamente los estados repetidos.
+
+Por eso el estado guarda cómo está el mundo actualmente, mientras que el nodo guarda cómo se llegó hasta allí.
 
 ### Cuándo dos configuraciones son el mismo estado
 
-Materiales equivalentes por tipo (§2.2): no les ponga ids artificiales.
-Estructuras canónicas (conjuntos, contadores) para que `==` y el hash coincidan
-con la equivalencia física. Sin eso Graph Search explota.
+Dos configuraciones son el mismo estado cuando tienen:
 
-(completar)
+- la misma zona;
+- la misma batería;
+- la misma carga;
+- la misma distribución de los objetos relevantes;
+- las mismas puertas abiertas;
+- los mismos paneles reparados;
+- las mismas estaciones ONLINE.
+
+En este caso el orden de los objetos en la carga no importa y dos materiales iguales se tomarán como dos unidades del mismo tipo
+
 
 ### Relevancia: objetos que ya no cambian el futuro
 
-Los cambios del entorno son **monótonos** (una puerta abierta no se cierra).
-Pregúntese: una llave cuya puerta ya está abierta, o una herramienta cuyo panel
-ya está reparado, ¿sigue distinguiendo estados si solo cambia *dónde* está en
-el suelo? Si no habilita ninguna acción futura, incluirla multiplica el espacio
-con permutaciones de objetos muertos. Justifique si las ignora y por qué eso
-no pierde el óptimo.
+Un objeto deja de ser relevante cuando ya no puede ayudar a realizar ninguna acción necesaria para cumplir la misión.
 
-(completar)
+Por ejemplo, una llave deja de ser relevante después de abrir la puerta correspondiente, ya que esta no vuelve a cerrarse.
+
+Si en este caso la llave está en el suelo ya no es necesario tomarla en cuenta ya que de usarla ya no se llegaría a la respuesta más optima, en cambio si se encuentra dentro de la carga del robot debe ser soltada para luego ser ignorada
+
 
 ---
 
 ## Acciones
 
-Defina las acciones **internas** del agente (nombres libres). Para cada una:
-precondiciones, efectos, costo. Toda acción del mundo exige además
-`batería ≥ costo`.
+Las acciones internas del agente serán las siguientes:
 
-Puede usar una tabla:
+| Acción | Precondiciones | Efectos | Costo |
+|---|---|---|---|
+| `MOVE(z')` | Existe un corredor hacia `z'`. Si hay una puerta, debe estar abierta. El robot debe tener batería suficiente. | El robot cambia de zona y disminuye su batería. | Costo del corredor. |
+| `PICKUP(o)` | El objeto está en la zona actual, todavía es relevante, cabe dentro de la capacidad y hay batería suficiente. | El objeto pasa del suelo a la carga y disminuye la batería. | `action_costs.pickup` |
+| `DROP(o)` | El objeto está en la carga, soltarlo es relevante para liberar capacidad y hay batería suficiente. | El objeto sale de la carga y queda en la zona actual. También disminuye la batería. | `action_costs.drop` |
+| `OPEN_DOOR(d)` | El robot está junto a la puerta, la puerta está cerrada, tiene la llave necesaria y batería suficiente. | La puerta queda abierta permanentemente. | Costo de interacción del escenario. |
+| `REPAIR(p)` | El robot está en la zona del panel, el panel no está reparado y tiene la herramienta y el material necesarios. También necesita batería suficiente. | El panel queda reparado. El material se consume y la herramienta permanece. | Costo de interacción del escenario. |
+| `ACTIVATE(e)` | El robot está en la zona de la estación, la estación está OFFLINE, se cumplen sus dependencias y hay batería suficiente. | La estación pasa a ONLINE. | Costo de interacción del escenario. |
+| `RECHARGE` | El robot está en una zona con cargador, la batería no está llena y puede pagar el costo de la acción. | Primero se paga el costo de la acción y después la batería vuelve hasta `battery_max`. | `action_costs.recharge` |
 
-```text
-Acción | Precondiciones | Efectos | Costo
-```
-
-(completar)
+Como regla general, una acción solo puede generarse si el robot tiene batería suficiente para pagar su costo.
 
 ### `Applicable` interno vs legalidad del contrato
 
-El simulador dice cuándo un paso es **legal**. Su generador de sucesores dice
-qué acciones son **relevantes para buscar**. No tienen que ser el mismo conjunto.
+El simulador puede permitir acciones que físicamente son legales pero que no son útiles para encontrar una solución.
 
-El contrato **permite** `DROP` en cualquier zona si el objeto está en la carga.
-Si su agente genera ese `DROP` en cada estado con carga, el espacio deja de ser
-«5 zonas y unas tareas» y pasa a ser «en cuál de las 5 zonas quedó cada objeto».
-Eso no se arregla cambiando `cargo_capacity` ni apagando la batería: el escenario
-es la fuente de verdad y el profesor probará otras instancias.
+El caso más importante es `DROP` ya que de usarlo en cada sala se generarían demasiadas combinaciones que no serían óptimas además de no generar beneficio en caso de que se suelte salas antes de necesitar espacio por eso el robot puede esperar hasta llegar al lugar donde realmente hace falta recoger el nuevo objeto, evitando recoger objetos sin utilidad
 
-Usted puede (y se espera que) restrinja `DROP` —y cualquier otra acción— a los
-casos que un plan **óptimo** podría necesitar. Justifique que ningún plan de
-costo mínimo usa una acción que usted dejó de generar.
-
-(completar: en particular, cuándo genera `DROP` y por qué)
 
 ---
 
 ## Modelo de transición
 
+El modelo de transición se puede expresar como:
+
 ```text
-s  --a-->  s'     solo si a ∈ Applicable(s)
+Result(s, a) = s'     solo si a ∈ Applicable(s)
 ```
 
-`Result` es determinista y parcial. Qué puede cambiar: zona, carga/suelo,
-batería, entorno persistente. Qué se preserva. Si canonicaliza el estado tras
-una acción, dígalo aquí.
+El entorno es determinista, así que aplicar una acción legal sobre un estado produce un único estado siguiente.
 
-(completar)
+Todas las acciones consumen batería según su costo.
+
+Además, dependiendo de la acción ocurren los siguientes cambios:
+
+- `MOVE` cambia la zona del robot.
+- `PICKUP` quita un objeto del suelo y lo agrega a la carga.
+- `DROP` quita un objeto de la carga y lo deja en la zona actual.
+- `OPEN_DOOR` agrega una puerta al conjunto de puertas abiertas.
+- `REPAIR` agrega el panel al conjunto de paneles reparados y consume el material necesario. La herramienta no se consume.
+- `ACTIVATE` agrega la estación al conjunto de estaciones ONLINE.
+- `RECHARGE` restaura la batería hasta `battery_max` después de pagar el costo de la acción.
+
+Las partes del estado que no son afectadas por una acción se mantienen iguales.
 
 ---
 
 ## Prueba de meta
 
+La prueba de meta será:
+
 ```text
-Goal(s) ⟺ …
+Goal(s) ⟺ goal.stations_online ⊆ E
 ```
 
-La misión se verifica sobre el **estado final del mundo**, no sobre haber
-ejecutado una lista de tareas. ¿Las puertas y los paneles son parte de la meta
-o solo medios?
+Esto significa que el problema termina cuando todas las estaciones que el escenario pide en `goal.stations_online` están dentro del conjunto `E` de estaciones ONLINE.
 
-(completar)
+La meta se comprueba mirando cómo quedó el mundo y no revisando las acciones que el robot tomó.
 
 ---
 
 ## Función de costo
 
+El costo acumulado se representa como:
+
 ```text
-g(n) = …
+g(n) = Σ c(ai)
 ```
 
-Debe ser la suma de los **costos oficiales** del escenario (no el número de
-pasos). Explique por qué minimizar pasos no es lo mismo que minimizar costo
-en este mundo (hay corredores baratos y caros).
+`g(n)` es la suma de los costos de todas las acciones realizadas desde el estado inicial hasta el nodo actual.
 
-(completar)
+Los costos siempre se toman directamente del escenario.
+
+Los movimientos usan el costo del corredor y las demás acciones usan los costos definidos en `action_costs`.
+
+Un plan con menos acciones puede ser mas costoso que uno mas complejo, por esto, la profundidad del nodo no representa qué tan buena es una solución. Lo importante es el costo acumulado `g(n)`.
 
 ---
 
 ## Estrategia de búsqueda
 
-Elija una estrategia **vista en clase** y justifíquela con las propiedades
-reales del problema (costos heterogéneos, plan de menor costo, espacio finito).
+Se utilizará **Búsqueda de Costo Uniforme (Uniform Cost Search, UCS) con Graph Search**.
 
-Discuta:
+UCS es adecuada para este problema porque las acciones tienen costos diferentes y necesitamos encontrar el plan que tenga el menor costo total.
 
-- completitud
-- optimalidad (¿la prueba de meta se hace al extraer o al generar?)
-- costo de camino
-- tiempo y espacio (el `b` peligroso no es el grado del mapa: es cuántos
-  `DROP`/`PICKUP` genera por estado)
-- cuándo se rompen las garantías (costos 0 o negativos, estados mal
-  canonicalizados, OPEN que no se vacía)
+La frontera `OPEN` se manejará con una cola de prioridad ordenada por `g(n)`. De esta forma, siempre se expande primero el nodo que tenga el menor costo acumulado.
 
-Graph Search exige una lista CLOSED sobre estados **canónicos**. Explique cómo
-evita reexplorar la misma situación física.
+### Completitud
 
-(completar)
+Como el espacio de estados es finito, se controla el número de sucesores y los costos son positivos, UCS puede encontrar una solución si existe.
+
+### Optimalidad
+
+UCS siempre extrae de `OPEN` el nodo que tenga el menor costo acumulado.
+
+La prueba de meta debe hacerse cuando un nodo se extrae de la frontera y no cuando se genera.
+
+Esto se hace porque un camino que ya llegó a la meta puede ser más costoso que otro camino que todavía no termina de explorarse.
+
+### Costo de camino
+
+La prioridad utilizada es:
+
+```text
+g(n)
+```
+
+que corresponde a la suma de todos los costos oficiales de las acciones usadas para llegar hasta ese nodo.
+
+### Tiempo y espacio
+
+UCS puede usar bastante memoria porque mantiene diferentes posibilidades dentro de `OPEN`.
+
+El problema principal no es solamente cuántos caminos salen de cada zona. Acciones como `PICKUP` y especialmente `DROP` pueden producir muchas configuraciones diferentes del inventario y de los objetos que quedan en el mapa.
+
+Por esto, `Applicable` debe evitar generar acciones que no aporten a una posible solución óptima.
+
+### Graph Search y CLOSED
+
+Se utilizará una estructura `CLOSED` para evitar volver a explorar situaciones que ya fueron procesadas.
+
+Los estados utilizados en `CLOSED` deben estar representados de forma canónica.
+
+Esto permite que dos caminos diferentes que llegan exactamente a la misma situación física sean reconocidos como el mismo estado.
+
+Las garantías de la búsqueda pueden fallar si se usan estados mal representados, se generan demasiadas acciones innecesarias, existen costos negativos o se maneja incorrectamente `OPEN` y `CLOSED`.
 
 ### Batería como recurso
 
-La batería **sí** va en el estado (§2.1). Eso no implica explorar todos los
-paseos que solo gastan energía. Si dos caminos llegan a la **misma**
-configuración del mundo (zona, carga, suelo, entorno) y uno trae **más batería
-residual** a un **costo menor o igual**, el otro no puede mejorar ningún plan
-futuro: está dominado. Tratar cada nivel de batería como un mundo distinto,
-sin esa observación, hace que UCS recorra detours inútiles hasta agotar
-memoria. Justifique cómo CLOSED aprovecha (o no) esta dominancia.
+La batería sí forma parte del estado porque determina qué acciones puede realizar el robot.
 
-(completar)
+Sin embargo, no todas las diferencias de batería tienen la misma utilidad.
+
+Para comparar dos caminos se puede separar la configuración del mundo de la batería:
+
+```text
+w = ⟨zona, carga, suelo, puertas, paneles, estaciones⟩
+```
+
+Si dos nodos llegan a la misma configuración `w`, se pueden comparar usando su costo y su batería.
+
+Un nodo `n1` domina a un nodo `n2` cuando:
+
+```text
+g(n1) <= g(n2)
+bateria(n1) >= bateria(n2)
+```
+
+Esto quiere decir que `n1` llegó a la misma situación con un costo menor o igual y además tiene una batería mayor o igual.
+
+En ese caso no tiene sentido seguir explorando `n2`, porque cualquier acción que pueda realizar desde `n2` también podría realizarse desde `n1`.
 
 ---
 
-## Formulación y tamaño del espacio (obligatorio)
+## Formulación y tamaño del espacio
 
-El mapa visible es pequeño. El espacio de estados **no** lo es, si se formula
-mal. Responda con sus palabras:
+### 1. ¿Por qué «5 zonas, ~10 objetos, capacidad 3» puede generar millones de nodos en un UCS ingenuo?
 
-1. ¿Por qué «5 zonas, ~10 objetos, capacidad 3» puede generar millones de nodos
-   en un UCS ingenuo?
-2. ¿Qué papel tiene `DROP` en esa explosión?
-3. ¿Qué podas o abstracciones aplicó y por qué **no pierden el óptimo**
-   (*sound*)?
-4. ¿Por qué **no** es solución subir la capacidad, bajar las estaciones o
-   ignorar la batería?
+Porque un estado no depende solamente de la zona donde está el robot sino de cada una de las variables y posiciones de los objetos, haciendo que combinando las posibilidades de todas se pueda generar una gran cantidad de estados
 
-(completar)
+### 2. ¿Qué papel tiene `DROP` en esa explosión?
+
+`DROP` puede aumentar demasiado el espacio de búsqueda porque permite dejar los objetos en diferentes zonas ya que el agente puede repetir un ciclo en el que deja y recoge los objetos en cada sala, llegando a soluciones poco optimas.
+
+Por eso, aunque `DROP` pueda ser una acción legal, el agente solamente lo genera cuando tiene una utilidad real para liberar capacidad.
+
+### 3. ¿Qué podas o abstracciones se aplican y por qué no pierden el óptimo?
+
+Se aplicarán las siguientes ideas:
+
+- No generar `DROP` si no ayuda a liberar capacidad para recoger un objeto relevante.
+- No recoger objetos que ya no tengan utilidad para cumplir la misión.
+- Ignorar la ubicación exacta de objetos que ya no puedan afectar ninguna acción futura.
+- Representar materiales equivalentes usando cantidades por tipo.
+- Utilizar estados canónicos para que CLOSED reconozca configuraciones repetidas.
+- Aplicar dominancia de batería para descartar caminos que llegan a la misma situación con mayor costo y menor batería.
+
+Estas podas no eliminan una solución óptima porque solamente descartan estados o acciones que no pueden producir una ventaja futura frente a otra opción que ya tenemos.
+
+### 4. ¿Por qué no es solución subir la capacidad, bajar las estaciones o ignorar la batería?
+
+Porque eso cambiaría las reglas del problema y el agente debe poder resolver otros escenarios que mantengan el mismo contrato.
+
+Cambiar artificialmente esto haría el escenario mas fácil pero no se estaría resolviendo el problema original
